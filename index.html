@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <title>Receipts by Fiorsaoirse</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#7c3aed">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Receipts">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="header" id="appHeader">
+    <button class="back-btn" id="backBtn" onclick="goBack()">&#8249;</button>
+    <h1 id="headerTitle">Receipts</h1>
+    <div class="header-actions">
+      <button class="header-btn" onclick="showFilterModal()" title="Filter">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Loading overlay -->
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="spinner"></div>
+    <span id="loadingText">Processing receipt...</span>
+  </div>
+
+  <!-- ====== DASHBOARD PAGE ====== -->
+  <div class="page active" id="pageDashboard">
+    <div class="search-bar">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" placeholder="Search receipts..." id="searchInput" oninput="filterReceipts()">
+    </div>
+
+    <div class="filter-bar" id="typeFilter">
+      <button class="filter-chip active" data-type="all" onclick="setTypeFilter('all', this)">All</button>
+      <button class="filter-chip" data-type="business" onclick="setTypeFilter('business', this)">Business</button>
+      <button class="filter-chip" data-type="personal" onclick="setTypeFilter('personal', this)">Personal</button>
+    </div>
+
+    <div id="receiptList"></div>
+  </div>
+
+  <!-- ====== SCAN PAGE ====== -->
+  <div class="page" id="pageScan">
+    <div class="scan-area" id="scanPrompt">
+      <div class="scan-icon">&#128247;</div>
+      <h2>Scan a Receipt</h2>
+      <p>Take a photo or choose from your library</p>
+      <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none" onchange="handlePhoto(event)">
+      <button class="btn btn-primary" onclick="document.getElementById('cameraInput').click()" style="max-width:280px">
+        &#128248; Take Photo
+      </button>
+      <input type="file" accept="image/*" id="fileInput" style="display:none" onchange="handlePhoto(event)">
+      <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()" style="max-width:280px">
+        Choose from Library
+      </button>
+    </div>
+
+    <!-- Receipt form (shown after photo) -->
+    <div id="receiptForm" style="display:none">
+      <img id="photoPreview" class="photo-preview" alt="Receipt photo">
+
+      <div class="card" id="ocrStatus" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="spinner" style="border-color:rgba(124,58,237,0.2);border-top-color:var(--purple);width:18px;height:18px;border-width:2px"></div>
+          <span style="font-size:14px;color:var(--text-muted)">Extracting receipt data...</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Vendor / Store</label>
+        <input type="text" class="form-control" id="fVendor" placeholder="e.g. Starbucks">
+      </div>
+
+      <div class="form-group">
+        <label>Total Amount ($)</label>
+        <input type="number" class="form-control" id="fAmount" placeholder="0.00" step="0.01" inputmode="decimal">
+      </div>
+
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" class="form-control" id="fDate">
+      </div>
+
+      <div class="form-group">
+        <label>Type</label>
+        <div class="toggle-group">
+          <button class="toggle-btn active" data-val="personal" onclick="setFormType('personal', this)">Personal</button>
+          <button class="toggle-btn" data-val="business" onclick="setFormType('business', this)">Business</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Category</label>
+        <select class="form-control" id="fCategory">
+          <option value="">Select category...</option>
+          <option>Meals & Entertainment</option>
+          <option>Travel</option>
+          <option>Gas/Mileage</option>
+          <option>Office Supplies</option>
+          <option>Software/Subscriptions</option>
+          <option>Equipment</option>
+          <option>Marketing</option>
+          <option>Professional Services</option>
+          <option>Groceries</option>
+          <option>Shopping</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+      <!-- Business-only fields -->
+      <div id="businessFields" style="display:none">
+        <div class="form-group">
+          <label>Client</label>
+          <select class="form-control" id="fClient">
+            <option value="">No client</option>
+          </select>
+          <div class="inline-add" id="addClientRow" style="display:none">
+            <input type="text" class="form-control" id="newClientName" placeholder="Client name">
+            <button class="btn btn-sm btn-primary" onclick="saveNewClient()">Add</button>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="toggleInlineAdd('addClientRow')" style="margin-top:6px">+ New Client</button>
+        </div>
+
+        <div class="form-group">
+          <label>Work Trip</label>
+          <select class="form-control" id="fTrip">
+            <option value="">No trip</option>
+          </select>
+          <div class="inline-add" id="addTripRow" style="display:none">
+            <input type="text" class="form-control" id="newTripName" placeholder="Trip name">
+            <button class="btn btn-sm btn-primary" onclick="saveNewTrip()">Add</button>
+          </div>
+          <button class="btn btn-sm btn-outline" onclick="toggleInlineAdd('addTripRow')" style="margin-top:6px">+ New Trip</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Payment Method</label>
+        <select class="form-control" id="fPayment">
+          <option value="">Select payment...</option>
+        </select>
+        <div class="inline-add" id="addPaymentRow" style="display:none">
+          <input type="text" class="form-control" id="newPaymentName" placeholder="e.g. Amex Business">
+          <button class="btn btn-sm btn-primary" onclick="saveNewPayment()">Add</button>
+        </div>
+        <button class="btn btn-sm btn-outline" onclick="toggleInlineAdd('addPaymentRow')" style="margin-top:6px">+ New Method</button>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea class="form-control" id="fNotes" placeholder="Optional notes..."></textarea>
+      </div>
+
+      <button class="btn btn-primary" onclick="saveReceipt()" id="saveBtn">Save Receipt</button>
+      <button class="btn btn-outline" onclick="cancelScan()" style="margin-top:8px">Cancel</button>
+    </div>
+  </div>
+
+  <!-- ====== SUMMARY PAGE ====== -->
+  <div class="page" id="pageSummary">
+    <div class="period-tabs" id="periodTabs">
+      <button class="period-tab active" onclick="setSummaryPeriod('month', this)">Month</button>
+      <button class="period-tab" onclick="setSummaryPeriod('quarter', this)">Quarter</button>
+      <button class="period-tab" onclick="setSummaryPeriod('year', this)">Year</button>
+      <button class="period-tab" onclick="setSummaryPeriod('all', this)">All</button>
+    </div>
+
+    <div class="stat-grid" id="summaryStats"></div>
+
+    <div class="card">
+      <h3 style="font-size:15px;margin-bottom:12px">By Category</h3>
+      <div id="categoryBreakdown"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="font-size:15px;margin-bottom:12px">By Client</h3>
+      <div id="clientBreakdown"></div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="font-size:15px;margin-bottom:12px">By Trip</h3>
+      <div id="tripBreakdown"></div>
+    </div>
+
+    <button class="btn btn-outline" onclick="exportCSV()" style="margin-top:16px">
+      &#128196; Export to CSV
+    </button>
+  </div>
+
+  <!-- ====== SETTINGS PAGE ====== -->
+  <div class="page" id="pageSettings">
+    <div class="card">
+      <h3 style="margin-bottom:12px;font-size:15px">Configuration</h3>
+      <div class="form-group">
+        <label>Supabase URL</label>
+        <input type="text" class="form-control" id="cfgSupabaseUrl" placeholder="https://xxx.supabase.co">
+      </div>
+      <div class="form-group">
+        <label>Supabase Anon Key</label>
+        <input type="password" class="form-control" id="cfgSupabaseKey" placeholder="eyJ...">
+      </div>
+      <div class="form-group">
+        <label>Anthropic API Key</label>
+        <input type="password" class="form-control" id="cfgAnthropicKey" placeholder="sk-ant-...">
+      </div>
+      <button class="btn btn-primary" onclick="saveConfig()">Save Configuration</button>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <h3 style="margin-bottom:12px;font-size:15px">Manage</h3>
+      <div class="settings-item" onclick="manageClients()">
+        <span>Clients</span>
+        <span style="color:var(--text-muted)">&#8250;</span>
+      </div>
+      <div class="settings-item" onclick="manageTrips()">
+        <span>Trips</span>
+        <span style="color:var(--text-muted)">&#8250;</span>
+      </div>
+      <div class="settings-item" onclick="managePayments()">
+        <span>Payment Methods</span>
+        <span style="color:var(--text-muted)">&#8250;</span>
+      </div>
+    </div>
+
+    <p style="text-align:center;color:var(--text-muted);font-size:12px;margin-top:24px">
+      Receipts by Fiorsaoirse v1.0
+    </p>
+  </div>
+
+  <!-- ====== DETAIL PAGE ====== -->
+  <div class="page" id="pageDetail">
+    <img id="detailPhoto" class="detail-photo" alt="Receipt">
+    <div id="detailFields"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-outline" onclick="editReceipt()" style="flex:1">Edit</button>
+      <button class="btn btn-danger" onclick="deleteReceipt()" style="flex:1">Delete</button>
+    </div>
+  </div>
+
+  <!-- ====== FILTER MODAL ====== -->
+  <div class="modal hidden" id="filterModal" onclick="if(event.target===this)closeFilterModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Filters</h2>
+        <button class="modal-close" onclick="closeFilterModal()">&times;</button>
+      </div>
+
+      <div class="filter-section">
+        <h3>Date Range</h3>
+        <div style="display:flex;gap:8px">
+          <input type="date" class="form-control" id="filterDateFrom" style="flex:1">
+          <input type="date" class="form-control" id="filterDateTo" style="flex:1">
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <h3>Category</h3>
+        <select class="form-control" id="filterCategory">
+          <option value="">All categories</option>
+          <option>Meals & Entertainment</option>
+          <option>Travel</option>
+          <option>Gas/Mileage</option>
+          <option>Office Supplies</option>
+          <option>Software/Subscriptions</option>
+          <option>Equipment</option>
+          <option>Marketing</option>
+          <option>Professional Services</option>
+          <option>Groceries</option>
+          <option>Shopping</option>
+          <option>Other</option>
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <h3>Client</h3>
+        <select class="form-control" id="filterClient">
+          <option value="">All clients</option>
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <h3>Trip</h3>
+        <select class="form-control" id="filterTrip">
+          <option value="">All trips</option>
+        </select>
+      </div>
+
+      <div class="filter-section">
+        <h3>Payment Method</h3>
+        <select class="form-control" id="filterPayment">
+          <option value="">All methods</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-outline" onclick="clearFilters()" style="flex:1">Clear</button>
+        <button class="btn btn-primary" onclick="applyFilters()" style="flex:1">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== MANAGE MODAL ====== -->
+  <div class="modal hidden" id="manageModal" onclick="if(event.target===this)closeManageModal()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="manageTitle">Manage</h2>
+        <button class="modal-close" onclick="closeManageModal()">&times;</button>
+      </div>
+      <div id="manageList"></div>
+    </div>
+  </div>
+
+  <!-- Scan FAB -->
+  <button class="scan-fab" id="scanFab" onclick="showPage('pageScan')">+</button>
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="showPage('pageDashboard')" data-page="pageDashboard">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-4 0a1 1 0 01-1-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 01-1 1"/></svg>
+      <span>Home</span>
+    </button>
+    <button class="nav-item" onclick="showPage('pageSummary')" data-page="pageSummary">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 19V6l12-3v13M9 19c0 1.1-1.34 2-3 2s-3-.9-3-2 1.34-2 3-2 3 .9 3 2zm12-3c0 1.1-1.34 2-3 2s-3-.9-3-2 1.34-2 3-2 3 .9 3 2z"/><path d="M16 3v5M9 6v5"/><rect x="3" y="3" width="18" height="18" rx="2" fill="none"/><path d="M3 9h18M9 21V9"/></svg>
+      <span>Summary</span>
+    </button>
+    <button class="nav-item" onclick="showPage('pageSettings')" data-page="pageSettings">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.32 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <script src="/app.js"></script>
+</body>
+</html>
