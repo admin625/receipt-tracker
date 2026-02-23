@@ -554,6 +554,58 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .settings-item:last-child { border-bottom: none; }
 
 /* Back button in header */
+/* Login Screen */
+.login-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, var(--purple) 0%, var(--purple-dark) 100%);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 500;
+}
+.login-card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 32px 24px;
+  width: 100%;
+  max-width: 380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+.login-logo {
+  text-align: center;
+  margin-bottom: 28px;
+}
+.login-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--purple-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 12px;
+}
+.login-logo h1 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+.login-logo p {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.login-error {
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+  margin-top: 12px;
+}
+.login-error.hidden { display: none; }
+
 .back-btn {
   background: none;
   border: none;

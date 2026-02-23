@@ -1,37 +1,45 @@
 // ============================================================
-// SnapReceipt — PWA
+// SnapReceipt — PWA with Supabase Auth
 // ============================================================
 
-// --- App Config (single source of truth for branding & settings) ---
+// --- App Config ---
 const APP_CONFIG = {
   appName: 'SnapReceipt',
-  currentUser: 'erinn',
   brandColor: '#7c3aed',
   maxFileSize: 25 * 1024 * 1024, // 25MB
   retentionMonths: 18,
 };
 
-// --- Supabase / API Config ---
+// --- Supabase Configuration (hardcoded — shared project) ---
+const SUPABASE_URL = 'https://kidgcrqxrfcbsaeguwop.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpZGdjcnF4cmZjYnNhZWd1d29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2MzY5MzQsImV4cCI6MjA3NDIxMjkzNH0.7u__bKIRGD7xt3JcoME2CBjIF7dGdkqE24IQ26hCe3k';
+
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// --- Auth State ---
+let currentAuthUser = null; // { id: uuid, email: string }
+
+// --- API Config (Anthropic key still user-configured) ---
 function getConfig() {
   return {
-    supabaseUrl: localStorage.getItem('cfg_supabase_url') || '',
-    supabaseKey: localStorage.getItem('cfg_supabase_key') || '',
     anthropicKey: localStorage.getItem('cfg_anthropic_key') || '',
   };
 }
 
-function supaFetch(path, opts = {}) {
-  const cfg = getConfig();
-  if (!cfg.supabaseUrl || !cfg.supabaseKey) {
-    toast('Configure Supabase in Settings first');
-    throw new Error('Supabase not configured');
-  }
-  const url = cfg.supabaseUrl.replace(/\/$/, '') + path;
+// --- Supabase REST helpers (now uses auth token for RLS) ---
+async function getAuthToken() {
+  const { data } = await supabaseClient.auth.getSession();
+  return data?.session?.access_token || SUPABASE_ANON_KEY;
+}
+
+async function supaFetch(path, opts = {}) {
+  const token = await getAuthToken();
+  const url = SUPABASE_URL + path;
   return fetch(url, {
     ...opts,
     headers: {
-      apikey: cfg.supabaseKey,
-      Authorization: `Bearer ${cfg.supabaseKey}`,
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
       Prefer: opts.prefer || 'return=representation',
       ...opts.headers,
@@ -46,14 +54,14 @@ function supaFetch(path, opts = {}) {
   });
 }
 
-function supaStorage(path, file, contentType) {
-  const cfg = getConfig();
-  const url = cfg.supabaseUrl.replace(/\/$/, '') + '/storage/v1/object/receipts/' + path;
+async function supaStorage(path, file, contentType) {
+  const token = await getAuthToken();
+  const url = SUPABASE_URL + '/storage/v1/object/receipts/' + path;
   return fetch(url, {
     method: 'POST',
     headers: {
-      apikey: cfg.supabaseKey,
-      Authorization: `Bearer ${cfg.supabaseKey}`,
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${token}`,
       'Content-Type': contentType,
       'x-upsert': 'true',
     },
@@ -68,8 +76,7 @@ function supaStorage(path, file, contentType) {
 }
 
 function getPublicUrl(path) {
-  const cfg = getConfig();
-  return cfg.supabaseUrl.replace(/\/$/, '') + '/storage/v1/object/public/receipts/' + path;
+  return SUPABASE_URL + '/storage/v1/object/public/receipts/' + path;
 }
 
 // --- State ---
@@ -91,33 +98,100 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-// --- Init ---
-document.addEventListener('DOMContentLoaded', () => {
+// ============================================================
+// AUTH: Login, Logout, Session Management
+// ============================================================
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const loginBtn = document.getElementById('loginBtn');
+  const errorEl = document.getElementById('loginError');
+
+  errorEl.classList.add('hidden');
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Signing in...';
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    errorEl.textContent = error.message;
+    errorEl.classList.remove('hidden');
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Sign In';
+    return;
+  }
+
+  // Auth state change listener will handle showing the app
+}
+
+async function handleSignOut() {
+  await supabaseClient.auth.signOut();
+  currentAuthUser = null;
+  allReceipts = [];
+  allClients = [];
+  allTrips = [];
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginPassword').value = '';
+  document.getElementById('loginError').classList.add('hidden');
+}
+
+function showApp(user) {
+  currentAuthUser = { id: user.id, email: user.email };
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').style.display = 'block';
   loadConfig();
   loadData();
+}
+
+// --- Init: Check session on page load ---
+document.addEventListener('DOMContentLoaded', async () => {
+  // Listen for auth state changes (login, logout, token refresh)
+  supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      showApp(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      currentAuthUser = null;
+      document.getElementById('appShell').style.display = 'none';
+      document.getElementById('loginScreen').style.display = 'flex';
+    }
+  });
+
+  // Check for existing session
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (session?.user) {
+    showApp(session.user);
+  } else {
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appShell').style.display = 'none';
+  }
 });
+
+// ============================================================
+// CONFIG (Anthropic key only — Supabase is now hardcoded)
+// ============================================================
 
 function loadConfig() {
   const cfg = getConfig();
-  document.getElementById('cfgSupabaseUrl').value = cfg.supabaseUrl;
-  document.getElementById('cfgSupabaseKey').value = cfg.supabaseKey;
   document.getElementById('cfgAnthropicKey').value = cfg.anthropicKey;
 }
 
 function saveConfig() {
-  localStorage.setItem('cfg_supabase_url', document.getElementById('cfgSupabaseUrl').value.trim());
-  localStorage.setItem('cfg_supabase_key', document.getElementById('cfgSupabaseKey').value.trim());
   localStorage.setItem('cfg_anthropic_key', document.getElementById('cfgAnthropicKey').value.trim());
   toast('Configuration saved');
-  loadData();
 }
 
+// ============================================================
+// DATA LOADING
+// ============================================================
+
 async function loadData() {
-  const cfg = getConfig();
-  if (!cfg.supabaseUrl || !cfg.supabaseKey) return;
+  if (!currentAuthUser) return;
 
   try {
-    const uid = APP_CONFIG.currentUser;
+    const uid = currentAuthUser.id;
     const [receipts, clients, trips] = await Promise.all([
       supaFetch(`/rest/v1/receipts?select=*,clients_receipt(name),trips(name)&user_id=eq.${uid}&order=receipt_date.desc.nullsfirst,created_at.desc`),
       supaFetch(`/rest/v1/clients_receipt?select=*&user_id=eq.${uid}&order=name`),
@@ -135,6 +209,8 @@ async function loadData() {
 
 // --- Navigation ---
 function showPage(id) {
+  if (!currentAuthUser) return; // guard
+
   const prev = document.querySelector('.page.active');
   if (prev) pageHistory.push(prev.id);
   document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
@@ -343,11 +419,11 @@ function showDetail(id) {
 }
 
 async function deleteReceipt() {
-  if (!currentReceiptId) return;
+  if (!currentReceiptId || !currentAuthUser) return;
   if (!confirm('Delete this receipt?')) return;
   try {
     showLoading('Deleting...');
-    await supaFetch(`/rest/v1/receipts?id=eq.${currentReceiptId}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/receipts?id=eq.${currentReceiptId}&user_id=eq.${currentAuthUser.id}`, { method: 'DELETE' });
     allReceipts = allReceipts.filter((r) => r.id !== currentReceiptId);
     hideLoading();
     toast('Receipt deleted');
@@ -392,7 +468,7 @@ async function updateReceipt(id) {
   const data = gatherFormData();
   try {
     showLoading('Updating...');
-    const [updated] = await supaFetch(`/rest/v1/receipts?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, {
+    const [updated] = await supaFetch(`/rest/v1/receipts?id=eq.${id}&user_id=eq.${currentAuthUser.id}`, {
       method: 'PATCH',
       body: JSON.stringify({ ...data, updated_at: new Date().toISOString() }),
     });
@@ -514,6 +590,7 @@ function gatherFormData() {
 }
 
 async function saveReceipt() {
+  if (!currentAuthUser) return;
   const data = gatherFormData();
 
   try {
@@ -526,7 +603,7 @@ async function saveReceipt() {
         throw new Error(`File too large (max ${APP_CONFIG.maxFileSize / 1024 / 1024}MB)`);
       }
       const ext = currentPhotoBlob.name?.split('.').pop() || 'jpg';
-      const path = `${APP_CONFIG.currentUser}/${Date.now()}.${ext}`;
+      const path = `${currentAuthUser.id}/${Date.now()}.${ext}`;
       await supaStorage(path, currentPhotoBlob, currentPhotoBlob.type || 'image/jpeg');
       photoUrl = getPublicUrl(path);
     }
@@ -536,7 +613,7 @@ async function saveReceipt() {
       method: 'POST',
       body: JSON.stringify({
         ...data,
-        user_id: APP_CONFIG.currentUser,
+        user_id: currentAuthUser.id,
         photo_url: photoUrl,
         ocr_raw: currentPhotoBase64 ? { processed: true } : null,
       }),
@@ -610,12 +687,13 @@ function toggleInlineAdd(id) {
 }
 
 async function saveNewClient() {
+  if (!currentAuthUser) return;
   const name = document.getElementById('newClientName').value.trim();
   if (!name) return;
   try {
     const [client] = await supaFetch('/rest/v1/clients_receipt', {
       method: 'POST',
-      body: JSON.stringify({ name, user_id: APP_CONFIG.currentUser }),
+      body: JSON.stringify({ name, user_id: currentAuthUser.id }),
     });
     allClients.push(client);
     populateDropdowns();
@@ -629,12 +707,13 @@ async function saveNewClient() {
 }
 
 async function saveNewTrip() {
+  if (!currentAuthUser) return;
   const name = document.getElementById('newTripName').value.trim();
   if (!name) return;
   try {
     const [trip] = await supaFetch('/rest/v1/trips', {
       method: 'POST',
-      body: JSON.stringify({ name, user_id: APP_CONFIG.currentUser }),
+      body: JSON.stringify({ name, user_id: currentAuthUser.id }),
     });
     allTrips.push(trip);
     populateDropdowns();
@@ -824,9 +903,9 @@ function closeManageModal() {
 }
 
 async function deleteClient(id) {
-  if (!confirm('Delete this client?')) return;
+  if (!confirm('Delete this client?') || !currentAuthUser) return;
   try {
-    await supaFetch(`/rest/v1/clients_receipt?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/clients_receipt?id=eq.${id}&user_id=eq.${currentAuthUser.id}`, { method: 'DELETE' });
     allClients = allClients.filter((c) => c.id !== id);
     populateDropdowns();
     manageClients();
@@ -837,9 +916,9 @@ async function deleteClient(id) {
 }
 
 async function deleteTrip(id) {
-  if (!confirm('Delete this trip?')) return;
+  if (!confirm('Delete this trip?') || !currentAuthUser) return;
   try {
-    await supaFetch(`/rest/v1/trips?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/trips?id=eq.${id}&user_id=eq.${currentAuthUser.id}`, { method: 'DELETE' });
     allTrips = allTrips.filter((t) => t.id !== id);
     populateDropdowns();
     manageTrips();

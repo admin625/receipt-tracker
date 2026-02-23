@@ -65,30 +65,28 @@ CREATE TABLE IF NOT EXISTS sr_accounts (
 -- Run this separately or create via Supabase Dashboard:
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', true);
 
--- RLS: Enable on all tables, with permissive policies for v1 (single-user)
+-- RLS: Enable on all tables
 ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients_receipt ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sr_accounts ENABLE ROW LEVEL SECURITY;
 
--- v1 policies: allow all via anon key (single-user app)
-CREATE POLICY "Allow all for receipts" ON receipts FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for clients_receipt" ON clients_receipt FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for trips" ON trips FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Allow all for sr_accounts" ON sr_accounts FOR ALL USING (true) WITH CHECK (true);
+-- Auth-based RLS policies (user_id is TEXT, auth.uid() is UUID — cast to text)
+CREATE POLICY "Users see own receipts" ON receipts
+  FOR ALL USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
 
--- Multi-user RLS policies (CREATED but NOT active — ready to swap in)
--- To activate: DROP the "Allow all" policies above, then these will take effect
--- These use app.current_user set via Supabase Auth or custom JWT claim
---
--- CREATE POLICY "Users see own receipts" ON receipts
---   FOR ALL USING (user_id = current_setting('app.current_user', true))
---   WITH CHECK (user_id = current_setting('app.current_user', true));
---
--- CREATE POLICY "Users see own clients" ON clients_receipt
---   FOR ALL USING (user_id = current_setting('app.current_user', true))
---   WITH CHECK (user_id = current_setting('app.current_user', true));
---
--- CREATE POLICY "Users see own trips" ON trips
---   FOR ALL USING (user_id = current_setting('app.current_user', true))
---   WITH CHECK (user_id = current_setting('app.current_user', true));
+CREATE POLICY "Users see own clients" ON clients_receipt
+  FOR ALL USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users see own trips" ON trips
+  FOR ALL USING (user_id = auth.uid()::text)
+  WITH CHECK (user_id = auth.uid()::text);
+
+CREATE POLICY "Users see own account" ON sr_accounts
+  FOR SELECT USING (id = auth.uid());
+
+CREATE POLICY "Service role manages accounts" ON sr_accounts
+  FOR ALL USING (auth.role() = 'service_role')
+  WITH CHECK (auth.role() = 'service_role');

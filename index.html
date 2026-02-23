@@ -16,8 +16,35 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
 
   <link rel="stylesheet" href="/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
+
+  <!-- ====== LOGIN SCREEN ====== -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-icon">&#128248;</div>
+        <h1>SnapReceipt</h1>
+        <p>Sign in to manage your receipts</p>
+      </div>
+      <form id="loginForm" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" class="form-control" id="loginEmail" placeholder="you@example.com" required autocomplete="email">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" class="form-control" id="loginPassword" placeholder="Enter your password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" id="loginBtn">Sign In</button>
+        <p class="login-error hidden" id="loginError"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====== MAIN APP (hidden until authenticated) ====== -->
+  <div id="appShell" style="display:none">
 
   <!-- Header -->
   <header class="header" id="appHeader">
@@ -26,6 +53,9 @@
     <div class="header-actions">
       <button class="header-btn" onclick="showFilterModal()" title="Filter">
         <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+      </button>
+      <button class="header-btn" onclick="handleSignOut()" title="Sign Out">
+        <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
       </button>
     </div>
   </header>
@@ -205,15 +235,7 @@
     <div class="card">
       <h3 style="margin-bottom:12px;font-size:15px">Configuration</h3>
       <div class="form-group">
-        <label>Supabase URL</label>
-        <input type="text" class="form-control" id="cfgSupabaseUrl" placeholder="https://xxx.supabase.co">
-      </div>
-      <div class="form-group">
-        <label>Supabase Anon Key</label>
-        <input type="password" class="form-control" id="cfgSupabaseKey" placeholder="eyJ...">
-      </div>
-      <div class="form-group">
-        <label>Anthropic API Key</label>
+        <label>Anthropic API Key (for OCR)</label>
         <input type="password" class="form-control" id="cfgAnthropicKey" placeholder="sk-ant-...">
       </div>
       <button class="btn btn-primary" onclick="saveConfig()">Save Configuration</button>
@@ -341,6 +363,8 @@
       <span>Settings</span>
     </button>
   </nav>
+
+  </div><!-- /appShell -->
 
   <script src="/app.js"></script>
 </body>
