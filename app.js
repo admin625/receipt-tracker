@@ -1,8 +1,17 @@
 // ============================================================
-// Receipts by Fiorsaoirse — PWA
+// SnapReceipt — PWA
 // ============================================================
 
-// --- Config ---
+// --- App Config (single source of truth for branding & settings) ---
+const APP_CONFIG = {
+  appName: 'SnapReceipt',
+  currentUser: 'erinn',
+  brandColor: '#7c3aed',
+  maxFileSize: 25 * 1024 * 1024, // 25MB
+  retentionMonths: 18,
+};
+
+// --- Supabase / API Config ---
 function getConfig() {
   return {
     supabaseUrl: localStorage.getItem('cfg_supabase_url') || '',
@@ -108,10 +117,11 @@ async function loadData() {
   if (!cfg.supabaseUrl || !cfg.supabaseKey) return;
 
   try {
+    const uid = APP_CONFIG.currentUser;
     const [receipts, clients, trips] = await Promise.all([
-      supaFetch('/rest/v1/receipts?select=*,clients_receipt(name),trips(name)&order=receipt_date.desc.nullsfirst,created_at.desc'),
-      supaFetch('/rest/v1/clients_receipt?select=*&order=name'),
-      supaFetch('/rest/v1/trips?select=*&order=created_at.desc'),
+      supaFetch(`/rest/v1/receipts?select=*,clients_receipt(name),trips(name)&user_id=eq.${uid}&order=receipt_date.desc.nullsfirst,created_at.desc`),
+      supaFetch(`/rest/v1/clients_receipt?select=*&user_id=eq.${uid}&order=name`),
+      supaFetch(`/rest/v1/trips?select=*&user_id=eq.${uid}&order=created_at.desc`),
     ]);
     allReceipts = receipts || [];
     allClients = clients || [];
@@ -141,13 +151,13 @@ function showPage(id) {
 
   // Header title
   const titles = {
-    pageDashboard: 'Receipts',
+    pageDashboard: APP_CONFIG.appName,
     pageScan: 'Scan Receipt',
     pageSummary: 'Summary',
     pageSettings: 'Settings',
     pageDetail: 'Receipt Detail',
   };
-  document.getElementById('headerTitle').textContent = titles[id] || 'Receipts';
+  document.getElementById('headerTitle').textContent = titles[id] || APP_CONFIG.appName;
 
   // FAB visibility
   document.getElementById('scanFab').style.display = id === 'pageDashboard' ? 'flex' : 'none';
@@ -168,7 +178,7 @@ function goBack() {
       n.classList.toggle('active', n.dataset.page === prev);
     });
     document.getElementById('backBtn').classList.remove('visible');
-    document.getElementById('headerTitle').textContent = 'Receipts';
+    document.getElementById('headerTitle').textContent = APP_CONFIG.appName;
     document.getElementById('scanFab').style.display = prev === 'pageDashboard' ? 'flex' : 'none';
   }
 }
@@ -337,7 +347,7 @@ async function deleteReceipt() {
   if (!confirm('Delete this receipt?')) return;
   try {
     showLoading('Deleting...');
-    await supaFetch(`/rest/v1/receipts?id=eq.${currentReceiptId}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/receipts?id=eq.${currentReceiptId}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
     allReceipts = allReceipts.filter((r) => r.id !== currentReceiptId);
     hideLoading();
     toast('Receipt deleted');
@@ -382,7 +392,7 @@ async function updateReceipt(id) {
   const data = gatherFormData();
   try {
     showLoading('Updating...');
-    const [updated] = await supaFetch(`/rest/v1/receipts?id=eq.${id}`, {
+    const [updated] = await supaFetch(`/rest/v1/receipts?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, {
       method: 'PATCH',
       body: JSON.stringify({ ...data, updated_at: new Date().toISOString() }),
     });
@@ -512,8 +522,11 @@ async function saveReceipt() {
     // Upload photo
     let photoUrl = '';
     if (currentPhotoBlob) {
+      if (currentPhotoBlob.size > APP_CONFIG.maxFileSize) {
+        throw new Error(`File too large (max ${APP_CONFIG.maxFileSize / 1024 / 1024}MB)`);
+      }
       const ext = currentPhotoBlob.name?.split('.').pop() || 'jpg';
-      const path = `mac/${Date.now()}.${ext}`;
+      const path = `${APP_CONFIG.currentUser}/${Date.now()}.${ext}`;
       await supaStorage(path, currentPhotoBlob, currentPhotoBlob.type || 'image/jpeg');
       photoUrl = getPublicUrl(path);
     }
@@ -523,7 +536,7 @@ async function saveReceipt() {
       method: 'POST',
       body: JSON.stringify({
         ...data,
-        user_id: 'mac',
+        user_id: APP_CONFIG.currentUser,
         photo_url: photoUrl,
         ocr_raw: currentPhotoBase64 ? { processed: true } : null,
       }),
@@ -602,7 +615,7 @@ async function saveNewClient() {
   try {
     const [client] = await supaFetch('/rest/v1/clients_receipt', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, user_id: APP_CONFIG.currentUser }),
     });
     allClients.push(client);
     populateDropdowns();
@@ -621,7 +634,7 @@ async function saveNewTrip() {
   try {
     const [trip] = await supaFetch('/rest/v1/trips', {
       method: 'POST',
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, user_id: APP_CONFIG.currentUser }),
     });
     allTrips.push(trip);
     populateDropdowns();
@@ -759,7 +772,7 @@ function exportCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `receipts-export-${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `snapreceipt-export-${new Date().toISOString().split('T')[0]}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   toast('CSV exported');
@@ -813,7 +826,7 @@ function closeManageModal() {
 async function deleteClient(id) {
   if (!confirm('Delete this client?')) return;
   try {
-    await supaFetch(`/rest/v1/clients_receipt?id=eq.${id}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/clients_receipt?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
     allClients = allClients.filter((c) => c.id !== id);
     populateDropdowns();
     manageClients();
@@ -826,7 +839,7 @@ async function deleteClient(id) {
 async function deleteTrip(id) {
   if (!confirm('Delete this trip?')) return;
   try {
-    await supaFetch(`/rest/v1/trips?id=eq.${id}`, { method: 'DELETE' });
+    await supaFetch(`/rest/v1/trips?id=eq.${id}&user_id=eq.${APP_CONFIG.currentUser}`, { method: 'DELETE' });
     allTrips = allTrips.filter((t) => t.id !== id);
     populateDropdowns();
     manageTrips();

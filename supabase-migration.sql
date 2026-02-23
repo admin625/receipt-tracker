@@ -1,18 +1,20 @@
 -- ============================================================
--- Receipts by Fiorsaoirse — Supabase Schema
+-- SnapReceipt — Supabase Schema
 -- Run this in the Supabase SQL Editor
 -- ============================================================
 
--- Saved clients for tagging
+-- Saved clients for tagging (with user_id for multi-tenancy)
 CREATE TABLE IF NOT EXISTS clients_receipt (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'erinn',
   name TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Saved work trips
+-- Saved work trips (with user_id for multi-tenancy)
 CREATE TABLE IF NOT EXISTS trips (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id TEXT NOT NULL DEFAULT 'erinn',
   name TEXT NOT NULL,
   start_date DATE,
   end_date DATE,
@@ -23,7 +25,7 @@ CREATE TABLE IF NOT EXISTS trips (
 -- Receipt photos and metadata
 CREATE TABLE IF NOT EXISTS receipts (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id TEXT NOT NULL DEFAULT 'mac',
+  user_id TEXT NOT NULL DEFAULT 'erinn',
   photo_url TEXT NOT NULL,
   vendor TEXT,
   amount DECIMAL(10,2),
@@ -40,21 +42,53 @@ CREATE TABLE IF NOT EXISTS receipts (
 );
 
 -- Indexes for common queries
-CREATE INDEX IF NOT EXISTS idx_receipts_user ON receipts(user_id);
+CREATE INDEX IF NOT EXISTS idx_receipts_user_id ON receipts(user_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(receipt_date DESC);
 CREATE INDEX IF NOT EXISTS idx_receipts_type ON receipts(type);
 CREATE INDEX IF NOT EXISTS idx_receipts_client ON receipts(client_id);
 CREATE INDEX IF NOT EXISTS idx_receipts_trip ON receipts(trip_id);
+CREATE INDEX IF NOT EXISTS idx_clients_receipt_user_id ON clients_receipt(user_id);
+CREATE INDEX IF NOT EXISTS idx_trips_user_id ON trips(user_id);
+
+-- Accounts table (not used in v1, ready for multi-user subscription)
+CREATE TABLE IF NOT EXISTS sr_accounts (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  name TEXT,
+  plan TEXT DEFAULT 'free' CHECK (plan IN ('free', 'basic', 'pro')),
+  stripe_customer_id TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
 -- Storage bucket for receipt photos
 -- Run this separately or create via Supabase Dashboard:
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', true);
 
--- RLS policies (allow all for anon key — single-user app)
+-- RLS: Enable on all tables, with permissive policies for v1 (single-user)
 ALTER TABLE receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE clients_receipt ENABLE ROW LEVEL SECURITY;
 ALTER TABLE trips ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sr_accounts ENABLE ROW LEVEL SECURITY;
 
+-- v1 policies: allow all via anon key (single-user app)
 CREATE POLICY "Allow all for receipts" ON receipts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for clients_receipt" ON clients_receipt FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for trips" ON trips FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for sr_accounts" ON sr_accounts FOR ALL USING (true) WITH CHECK (true);
+
+-- Multi-user RLS policies (CREATED but NOT active — ready to swap in)
+-- To activate: DROP the "Allow all" policies above, then these will take effect
+-- These use app.current_user set via Supabase Auth or custom JWT claim
+--
+-- CREATE POLICY "Users see own receipts" ON receipts
+--   FOR ALL USING (user_id = current_setting('app.current_user', true))
+--   WITH CHECK (user_id = current_setting('app.current_user', true));
+--
+-- CREATE POLICY "Users see own clients" ON clients_receipt
+--   FOR ALL USING (user_id = current_setting('app.current_user', true))
+--   WITH CHECK (user_id = current_setting('app.current_user', true));
+--
+-- CREATE POLICY "Users see own trips" ON trips
+--   FOR ALL USING (user_id = current_setting('app.current_user', true))
+--   WITH CHECK (user_id = current_setting('app.current_user', true));

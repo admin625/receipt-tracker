@@ -1,7 +1,7 @@
 {
-  "name": "Receipts by Fiorsaoirse",
-  "short_name": "Receipts",
-  "description": "Receipt tracker for tax and accounting",
+  "name": "SnapReceipt",
+  "short_name": "SnapReceipt",
+  "description": "Snap, categorize, and store receipts for tax and accounting",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1a1a2e",

@@ -1,3 +1,6 @@
 node_modules/
 .env
 generate-icons.js
+
+# Local Netlify folder
+.netlify
