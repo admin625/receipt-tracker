@@ -9,7 +9,7 @@
 // auth-based policies that enforce per-user data isolation.
 // ============================================================
 
-const SUPABASE_URL = 'https://kidgcrqxrfcbsaeguwop.supabase.co';
+const SUPABASE_URL = 'https://qmpskuawmubxjoyoqdhu.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 if (!SERVICE_KEY) {

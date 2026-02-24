@@ -10,16 +10,9 @@ const APP_CONFIG = {
   retentionMonths: 18,
 };
 
-// --- Supabase Configuration (hardcoded — shared project) ---
-// TODO: SEPARATE SUPABASE PROJECTS — SnapReceipt currently shares a Supabase
-// project (kidgcrqxrfcbsaeguwop) with the FCA Dashboard. Create a dedicated
-// SnapReceipt Supabase project and migrate these credentials. Both apps share
-// auth.users, which means FCA users appear in SnapReceipt's auth table and
-// vice versa. Separating projects will isolate auth, RLS policies, storage
-// buckets, and tables (receipts, trips, clients_receipt vs clients,
-// studio_instructors, etc.) for each app.
-const SUPABASE_URL = 'https://kidgcrqxrfcbsaeguwop.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtpZGdjcnF4cmZjYnNhZWd1d29wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2MzY5MzQsImV4cCI6MjA3NDIxMjkzNH0.7u__bKIRGD7xt3JcoME2CBjIF7dGdkqE24IQ26hCe3k';
+// --- Supabase Configuration (dedicated SnapReceipt project) ---
+const SUPABASE_URL = 'https://qmpskuawmubxjoyoqdhu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFtcHNrdWF3bXVieGpveW9xZGh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE5NTI3NjUsImV4cCI6MjA4NzUyODc2NX0.j7dHJXdzEnyfKvbwFb8fp_favBeMIAAykNQqC11j6Qw';
 
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 

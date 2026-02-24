@@ -1,19 +1,24 @@
 -- ============================================================
 -- SnapReceipt — COMPLETE Supabase Setup
 -- ============================================================
--- Paste this ENTIRE block into the Supabase SQL Editor and run.
--- URL: https://supabase.com/dashboard/project/kidgcrqxrfcbsaeguwop/sql
+-- Target: NEW dedicated SnapReceipt project (qmpskuawmubxjoyoqdhu)
+-- URL: https://supabase.com/dashboard/project/qmpskuawmubxjoyoqdhu/sql
 --
--- This creates:
---   1. clients_receipt table
---   2. trips table
---   3. receipts table
---   4. sr_accounts table
---   5. Indexes on user_id columns
---   6. RLS policies (auth.uid()-based)
---   7. Storage bucket for receipt photos
---   8. sr_accounts record for admin@fiorsaoirse.com
---   9. Password fix: admin@fiorsaoirse.com → Erinn1971
+-- Paste this ENTIRE block into the Supabase SQL Editor and run.
+--
+-- Auth users already created via Admin API:
+--   erinnkate@aol.com      → c1048478-fb41-4521-a131-839290226425
+--   mcdonald1313@gmail.com → a76ebded-234f-4d2c-980e-f75bd4d40d1f
+--   admin@fiorsaoirse.com  → bbf89f02-428d-458a-822b-0d2e352b1cb8
+--
+-- Storage bucket already created via API.
+--
+-- This script creates:
+--   1. clients_receipt, trips, receipts, sr_accounts tables
+--   2. Indexes on user_id columns
+--   3. RLS policies (auth.uid()-based)
+--   4. Storage RLS policies for receipt photos
+--   5. sr_accounts records for all 3 users
 -- ============================================================
 
 -- ============================================================
@@ -115,33 +120,43 @@ CREATE POLICY "Service role manages accounts" ON sr_accounts
   WITH CHECK (auth.role() = 'service_role');
 
 -- ============================================================
--- STEP 5: Storage bucket for receipt photos
+-- STEP 5: Storage RLS policies for receipt photos
 -- ============================================================
+-- Bucket 'receipts' already created via API.
+-- Files are stored as: {user_id}/{filename}
+-- Each user can only upload/read/delete their own files.
 
-INSERT INTO storage.buckets (id, name, public)
-VALUES ('receipts', 'receipts', true)
-ON CONFLICT (id) DO NOTHING;
+CREATE POLICY "Users upload own receipts" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'receipts'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+CREATE POLICY "Users read own receipts" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'receipts'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+CREATE POLICY "Users delete own receipts" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'receipts'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Public read access for receipt images (bucket is public)
+CREATE POLICY "Public read receipt images" ON storage.objects
+  FOR SELECT USING (bucket_id = 'receipts');
 
 -- ============================================================
 -- STEP 6: Insert sr_accounts records for auth users
 -- ============================================================
--- admin@fiorsaoirse.com  UUID: 0b95a442-9583-46a6-924f-da88a6929fd6
--- erinnkate@aol.com      UUID: f82a166e-cf98-45b8-89f9-84ad01533038
--- mcdonald1313@gmail.com UUID: 3a3b72aa-c4cb-49a6-9aee-8d2915ce1335
 
 INSERT INTO sr_accounts (id, email, name, plan, is_active) VALUES
-  ('0b95a442-9583-46a6-924f-da88a6929fd6', 'admin@fiorsaoirse.com', 'Mac (Admin)', 'pro', true),
-  ('f82a166e-cf98-45b8-89f9-84ad01533038', 'erinnkate@aol.com', 'Erinn', 'free', true),
-  ('3a3b72aa-c4cb-49a6-9aee-8d2915ce1335', 'mcdonald1313@gmail.com', 'Megan', 'free', true)
+  ('bbf89f02-428d-458a-822b-0d2e352b1cb8', 'admin@fiorsaoirse.com', 'Mac (Admin)', 'pro', true),
+  ('c1048478-fb41-4521-a131-839290226425', 'erinnkate@aol.com', 'Erinn', 'free', true),
+  ('a76ebded-234f-4d2c-980e-f75bd4d40d1f', 'mcdonald1313@gmail.com', 'Megan', 'free', true)
 ON CONFLICT (email) DO NOTHING;
-
--- ============================================================
--- STEP 7: Fix admin password to Erinn1971
--- ============================================================
-
-UPDATE auth.users
-SET encrypted_password = crypt('Erinn1971', gen_salt('bf'))
-WHERE email = 'admin@fiorsaoirse.com';
 
 -- ============================================================
 -- DONE! Verify by running:

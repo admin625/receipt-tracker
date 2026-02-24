@@ -13,7 +13,7 @@
 // Run this ONCE before deploying the auth-enabled app.
 // ============================================================
 
-const SUPABASE_URL = 'https://kidgcrqxrfcbsaeguwop.supabase.co';
+const SUPABASE_URL = 'https://qmpskuawmubxjoyoqdhu.supabase.co';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 if (!SERVICE_KEY) {

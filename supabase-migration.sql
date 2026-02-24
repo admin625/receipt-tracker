@@ -1,6 +1,7 @@
 -- ============================================================
--- SnapReceipt — Supabase Schema
--- Run this in the Supabase SQL Editor
+-- SnapReceipt — Supabase Schema (DEPRECATED)
+-- Use snapreceipt-complete-setup.sql instead.
+-- Target project: qmpskuawmubxjoyoqdhu (dedicated SnapReceipt)
 -- ============================================================
 
 -- Saved clients for tagging (with user_id for multi-tenancy)
