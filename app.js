@@ -148,9 +148,20 @@ function showApp(user) {
 
 // --- Init: Check session on page load ---
 document.addEventListener('DOMContentLoaded', async () => {
-  // Listen for auth state changes (login, logout, token refresh)
+  // Listen for auth state changes (login, logout, token refresh, password recovery)
   supabaseClient.auth.onAuthStateChange((event, session) => {
+    console.log('[Auth] onAuthStateChange:', event);
+    if (event === 'PASSWORD_RECOVERY') {
+      console.log('[Auth] PASSWORD_RECOVERY event — showing reset form');
+      showResetScreen();
+      return;
+    }
     if (event === 'SIGNED_IN' && session?.user) {
+      // Don't redirect to app if user is on reset screen
+      if (document.getElementById('resetScreen').style.display !== 'none') {
+        console.log('[Auth] On reset screen, skipping app redirect');
+        return;
+      }
       showApp(session.user);
     } else if (event === 'SIGNED_OUT') {
       currentAuthUser = null;
@@ -167,6 +178,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('appShell').style.display = 'none';
   }
+
+  // Wire up forgot password link
+  document.getElementById('forgotPasswordLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    showForgotScreen();
+  });
+  document.getElementById('backToLoginFromForgot').addEventListener('click', (e) => {
+    e.preventDefault();
+    showLoginScreen();
+  });
 });
 
 // ============================================================
@@ -971,4 +992,141 @@ function toast(msg) {
   el.textContent = msg;
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 2500);
+}
+
+// ============================================================
+// PASSWORD RESET FLOW
+// ============================================================
+
+function hideAllScreens() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('forgotScreen').style.display = 'none';
+  document.getElementById('resetScreen').style.display = 'none';
+  document.getElementById('appShell').style.display = 'none';
+}
+
+function showLoginScreen() {
+  hideAllScreens();
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+function showForgotScreen() {
+  hideAllScreens();
+  document.getElementById('forgotScreen').style.display = 'flex';
+  document.getElementById('forgotEmail').value = document.getElementById('loginEmail').value || '';
+  document.getElementById('forgotError').classList.add('hidden');
+  document.getElementById('forgotSuccess').classList.add('hidden');
+  document.getElementById('forgotBtn').disabled = false;
+  document.getElementById('forgotBtn').textContent = 'Send Reset Link';
+}
+
+function showResetScreen() {
+  hideAllScreens();
+  document.getElementById('resetScreen').style.display = 'flex';
+  document.getElementById('resetNewPassword').value = '';
+  document.getElementById('resetConfirmPassword').value = '';
+  document.getElementById('resetError').classList.add('hidden');
+  document.getElementById('resetSuccess').classList.add('hidden');
+  document.getElementById('resetBtn').disabled = false;
+  document.getElementById('resetBtn').textContent = 'Update Password';
+}
+
+function togglePwVis(inputId, btn) {
+  const input = document.getElementById(inputId);
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.innerHTML = '&#128064;';
+  } else {
+    input.type = 'password';
+    btn.innerHTML = '&#128065;';
+  }
+}
+
+async function handleForgotPassword(event) {
+  event.preventDefault();
+  const email = document.getElementById('forgotEmail').value.trim();
+  const btn = document.getElementById('forgotBtn');
+  const errEl = document.getElementById('forgotError');
+  const successEl = document.getElementById('forgotSuccess');
+
+  errEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  try {
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: 'https://receipt-tracker-fiorsaoirse.netlify.app'
+    });
+    if (error) {
+      errEl.textContent = error.message;
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Send Reset Link';
+      return;
+    }
+    successEl.textContent = 'Check your email! We sent a password reset link to ' + email;
+    successEl.classList.remove('hidden');
+    btn.textContent = 'Email Sent';
+    setTimeout(() => { btn.disabled = false; btn.textContent = 'Resend Link'; }, 5000);
+  } catch (err) {
+    errEl.textContent = 'Failed to send reset email: ' + (err.message || 'Unknown error');
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Send Reset Link';
+  }
+}
+
+async function handleResetPassword(event) {
+  event.preventDefault();
+  const newPw = document.getElementById('resetNewPassword').value;
+  const confirmPw = document.getElementById('resetConfirmPassword').value;
+  const btn = document.getElementById('resetBtn');
+  const errEl = document.getElementById('resetError');
+  const successEl = document.getElementById('resetSuccess');
+
+  errEl.classList.add('hidden');
+  successEl.classList.add('hidden');
+
+  if (newPw.length < 8) {
+    errEl.textContent = 'Password must be at least 8 characters long.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+  if (newPw !== confirmPw) {
+    errEl.textContent = 'Passwords do not match.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Updating...';
+
+  try {
+    const { error } = await supabaseClient.auth.updateUser({ password: newPw });
+    if (error) {
+      let msg = error.message;
+      if (msg.includes('expired') || msg.includes('invalid')) {
+        msg = 'This reset link has expired or is invalid. Please request a new one.';
+      }
+      errEl.textContent = msg;
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+      btn.textContent = 'Update Password';
+      return;
+    }
+    successEl.textContent = 'Password updated successfully! Redirecting to login...';
+    successEl.classList.remove('hidden');
+    btn.textContent = 'Password Updated';
+    setTimeout(async () => {
+      await supabaseClient.auth.signOut();
+      currentAuthUser = null;
+      showLoginScreen();
+    }, 2000);
+  } catch (err) {
+    errEl.textContent = 'Failed to update password: ' + (err.message || 'Unknown error');
+    errEl.classList.remove('hidden');
+    btn.disabled = false;
+    btn.textContent = 'Update Password';
+  }
 }
